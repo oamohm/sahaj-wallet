@@ -17,7 +17,7 @@ import { ERC20_ABI, type IBlockchainAdapter } from "../types/adapter.types.js";
  * cast to it right where the contract is constructed — every call site
  * downstream gets a real, fully-typed return value.
  */
-interface Erc20Contract extends Contract {
+interface Erc20Contract {
   balanceOf(owner: string): Promise<bigint>;
   decimals(): Promise<number>;
   symbol(): Promise<string>;
