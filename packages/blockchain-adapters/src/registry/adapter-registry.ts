@@ -22,10 +22,8 @@ const ADAPTER_FACTORIES: Partial<Record<NetworkId, AdapterFactory>> = {
 
 export class AdapterRegistry {
   private readonly adapters = new Map<NetworkId, IBlockchainAdapter>();
-  private readonly configs: Record<NetworkId, NetworkConfig>;
 
   constructor(configs: Record<NetworkId, NetworkConfig> = loadNetworkConfigs()) {
-    this.configs = configs;
     for (const config of Object.values(configs)) {
       if (!config.enabled) continue;
       const factory = ADAPTER_FACTORIES[config.id] ?? ((c: NetworkConfig) => new EvmAdapter(c));
