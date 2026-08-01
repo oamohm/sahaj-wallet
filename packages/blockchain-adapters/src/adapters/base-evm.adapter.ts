@@ -1,4 +1,5 @@
 import { Contract, JsonRpcProvider, Wallet, formatUnits, isAddress, parseUnits } from "ethers";
+import type { ContractTransactionResponse } from "ethers";
 import type {
   NetworkConfig,
   TokenBalance,
@@ -7,6 +8,21 @@ import type {
   TransferResult,
 } from "@sahaj/shared-types";
 import { ERC20_ABI, type IBlockchainAdapter } from "../types/adapter.types.js";
+
+/**
+ * ethers v6 types a bare `new Contract(address, humanReadableAbi, ...)`
+ * call's dynamic methods loosely enough that strict mode flags them as
+ * "possibly undefined" at every call site. Rather than sprinkle non-null
+ * assertions through the adapter, we declare the exact shape once here and
+ * cast to it right where the contract is constructed — every call site
+ * downstream gets a real, fully-typed return value.
+ */
+interface Erc20Contract extends Contract {
+  balanceOf(owner: string): Promise<bigint>;
+  decimals(): Promise<number>;
+  symbol(): Promise<string>;
+  transfer(to: string, amount: bigint): Promise<ContractTransactionResponse>;
+}
 
 /**
  * Concrete implementation of IBlockchainAdapter for any EVM-compatible
@@ -48,7 +64,7 @@ export class EvmAdapter implements IBlockchainAdapter {
 
   async getUsdcBalance(address: string): Promise<TokenBalance> {
     this.assertValidAddress(address);
-    const token = new Contract(this.config.usdcAddress, ERC20_ABI, this.provider);
+    const token = new Contract(this.config.usdcAddress, ERC20_ABI, this.provider) as unknown as Erc20Contract;
     const [raw, decimals, symbol]: [bigint, number, string] = await Promise.all([
       token.balanceOf(address),
       token.decimals(),
@@ -73,7 +89,7 @@ export class EvmAdapter implements IBlockchainAdapter {
       throw new Error("Signer does not match the requested fromAddress");
     }
 
-    const token = new Contract(this.config.usdcAddress, ERC20_ABI, wallet);
+    const token = new Contract(this.config.usdcAddress, ERC20_ABI, wallet) as unknown as Erc20Contract;
     const decimals: number = await token.decimals();
     const amount = parseUnits(request.amount, decimals);
 
