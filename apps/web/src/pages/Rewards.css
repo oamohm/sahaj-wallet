@@ -1,0 +1,115 @@
+.rewards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+  margin-top: var(--space-4);
+}
+
+.rewards__balance {
+  grid-column: 1 / -1;
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.rewards__eyebrow {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.rewards__amount {
+  font-size: 44px;
+  font-weight: 600;
+}
+
+.rewards__subrow {
+  display: flex;
+  gap: var(--space-5);
+  font-size: 13px;
+}
+
+.rewards__claim,
+.rewards__list {
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.rewards__claim h3,
+.rewards__list h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.rewards__events {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.rewards__event {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+}
+
+.rewards__event:last-child {
+  border-bottom: none;
+}
+
+.rewards__event-type {
+  font-weight: 500;
+  margin-right: var(--space-2);
+}
+
+.rewards__event-date {
+  font-size: 11px;
+}
+
+.rewards__event-amount {
+  font-size: 13px;
+  color: var(--brand-secondary);
+}
+
+.rewards__status {
+  text-transform: capitalize;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  border: 1px solid var(--line-strong);
+}
+
+.rewards__status--paid {
+  color: var(--brand-success);
+  border-color: color-mix(in srgb, var(--brand-success) 45%, transparent);
+}
+
+.rewards__status--pending,
+.rewards__status--processing {
+  color: var(--brand-warning);
+  border-color: color-mix(in srgb, var(--brand-warning) 45%, transparent);
+}
+
+.rewards__status--failed {
+  color: var(--brand-danger);
+  border-color: color-mix(in srgb, var(--brand-danger) 45%, transparent);
+}
+
+@media (max-width: 720px) {
+  .rewards {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,0 +1,357 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum NetworkId {
+  arc
+  ethereum
+  base
+  polygon
+  arbitrum
+  optimism
+  giwa
+}
+
+enum WalletProvider {
+  metamask
+  walletconnect
+  coinbase
+  circle
+}
+
+enum UserRole {
+  user
+  admin
+}
+
+enum CampaignStatus {
+  draft
+  active
+  ended
+  archived
+}
+
+enum TaskType {
+  social
+  wallet
+  onchain
+}
+
+enum TaskCompletionStatus {
+  pending
+  verified
+  rejected
+}
+
+enum ParticipantStatus {
+  joined
+  completed
+}
+
+enum RewardEventType {
+  signup_bonus
+  task_reward
+  campaign_reward
+  referral
+  streak
+  manual_grant
+}
+
+enum RewardClaimStatus {
+  pending
+  processing
+  paid
+  failed
+}
+
+// ---------------------------------------------------------------------------
+// Auth / Users
+// ---------------------------------------------------------------------------
+
+model User {
+  id           String   @id @default(cuid())
+  email        String?  @unique
+  primaryAddress String @unique
+  role         UserRole @default(user)
+  xp           Int      @default(0)
+  level        Int      @default(1)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  wallets             WalletAccount[]
+  refreshTokens       RefreshToken[]
+  authNonces          AuthNonce[]
+  campaignParticipations CampaignParticipant[]
+  taskCompletions     TaskCompletion[]
+  rewardEvents        RewardEvent[]
+  rewardClaims        RewardClaim[]
+
+  @@index([primaryAddress])
+  @@index([xp])
+  @@map("users")
+}
+
+/// Short-lived, single-use nonce a wallet must sign to authenticate
+/// (SIWE-style challenge/response). Rows are deleted once consumed or on
+/// expiry sweep.
+model AuthNonce {
+  id        String   @id @default(cuid())
+  address   String
+  nonce     String   @unique
+  networkId NetworkId
+  expiresAt DateTime
+  consumedAt DateTime?
+  createdAt DateTime @default(now())
+
+  user   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String?
+
+  @@index([address])
+  @@map("auth_nonces")
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  userId    String
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+// ---------------------------------------------------------------------------
+// Wallet
+// ---------------------------------------------------------------------------
+
+/// A single address a user controls (or that Circle manages on their
+/// behalf) on a specific network. A user can have many WalletAccounts
+/// spanning multiple providers and networks — this is what backs the
+/// "unified balance" / multi-wallet experience.
+model WalletAccount {
+  id             String         @id @default(cuid())
+  userId         String
+  networkId      NetworkId
+  address        String
+  provider       WalletProvider
+  circleWalletId String?        @unique
+  isPrimary      Boolean        @default(false)
+  createdAt      DateTime       @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([networkId, address])
+  @@index([userId])
+  @@map("wallet_accounts")
+}
+
+// ---------------------------------------------------------------------------
+// Campaigns / Tasks
+// ---------------------------------------------------------------------------
+
+/// A time-boxed set of tasks users can join and complete for USDC + XP
+/// rewards. Completing every required task in a campaign triggers the
+/// campaign-level bonus reward on top of each task's own reward.
+model Campaign {
+  id              String         @id @default(cuid())
+  title           String
+  description     String
+  status          CampaignStatus @default(draft)
+  networkId       NetworkId      @default(arc)
+  rewardUsdcAmount Decimal       @db.Decimal(18, 6)
+  xpReward        Int            @default(0)
+  startsAt        DateTime
+  endsAt          DateTime
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  tasks        Task[]
+  participants CampaignParticipant[]
+
+  @@index([status])
+  @@index([startsAt, endsAt])
+  @@map("campaigns")
+}
+
+/// A single unit of work within a campaign. `verificationConfig` carries
+/// type-specific parameters (e.g. required networkId for a wallet task, or
+/// the minimum confirmations for an onchain task) without needing a new
+/// column per task type.
+model Task {
+  id                 String   @id @default(cuid())
+  campaignId         String
+  type               TaskType
+  title              String
+  description        String
+  rewardUsdcAmount   Decimal  @db.Decimal(18, 6)
+  xpReward           Int      @default(0)
+  verificationConfig Json
+  isRequired         Boolean  @default(true)
+  createdAt          DateTime @default(now())
+
+  campaign    Campaign         @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  completions TaskCompletion[]
+
+  @@index([campaignId])
+  @@map("tasks")
+}
+
+model TaskCompletion {
+  id          String                @id @default(cuid())
+  userId      String
+  taskId      String
+  status      TaskCompletionStatus  @default(pending)
+  proof       String?
+  rejectedReason String?
+  submittedAt DateTime              @default(now())
+  verifiedAt  DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, taskId])
+  @@index([taskId])
+  @@index([userId])
+  @@map("task_completions")
+}
+
+model CampaignParticipant {
+  id          String             @id @default(cuid())
+  userId      String
+  campaignId  String
+  status      ParticipantStatus  @default(joined)
+  joinedAt    DateTime           @default(now())
+  completedAt DateTime?
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, campaignId])
+  @@index([campaignId])
+  @@map("campaign_participants")
+}
+
+// ---------------------------------------------------------------------------
+// Rewards
+// ---------------------------------------------------------------------------
+
+/// Append-only ledger of every USDC + XP reward a user earns. This is the
+/// single source of truth for a user's earned balance; RewardClaim rows
+/// track how much of that balance has actually been paid out.
+model RewardEvent {
+  id               String          @id @default(cuid())
+  userId           String
+  type             RewardEventType
+  usdcAmount       Decimal         @db.Decimal(18, 6)
+  xpAmount         Int             @default(0)
+  networkId        NetworkId
+  relatedTaskId    String?
+  relatedCampaignId String?
+  metadata         Json?
+  createdAt        DateTime        @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([type])
+  @@map("reward_events")
+}
+
+/// A user-initiated request to withdraw their accumulated, unclaimed USDC
+/// balance to a linked wallet. `txHash` is populated once the treasury
+/// payout transaction is confirmed on-chain.
+model RewardClaim {
+  id          String             @id @default(cuid())
+  userId      String
+  usdcAmount  Decimal            @db.Decimal(18, 6)
+  networkId   NetworkId
+  destinationAddress String
+  status      RewardClaimStatus  @default(pending)
+  txHash      String?
+  failureReason String?
+  createdAt   DateTime           @default(now())
+  paidAt      DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@map("reward_claims")
+}
+
+// ---------------------------------------------------------------------------
+// Faucet
+// ---------------------------------------------------------------------------
+
+enum FaucetClaimStatus {
+  succeeded
+  failed
+  redirected
+}
+
+/// Audit trail of every faucet request, used to enforce a per-address,
+/// per-network cooldown so the platform's proxy can't be used to hammer
+/// (and get the app's own IP rate-limited by) the official faucet.
+model FaucetClaim {
+  id        String            @id @default(cuid())
+  userId    String
+  address   String
+  networkId NetworkId
+  status    FaucetClaimStatus
+  message   String?
+  createdAt DateTime          @default(now())
+
+  @@index([userId, networkId, createdAt])
+  @@index([address, networkId, createdAt])
+  @@map("faucet_claims")
+}
+
+// ---------------------------------------------------------------------------
+// Staking (fixed-term USDC yield)
+// ---------------------------------------------------------------------------
+
+enum StakeStatus {
+  active
+  withdrawn
+  failed
+}
+
+/// A fixed-term USDC stake: principal moves from the user's Circle wallet
+/// into the platform treasury for the lock period, then principal + yield
+/// moves back on withdrawal after maturity. This is a testnet demonstration
+/// of predictable, USDC-denominated yield (Arc's "DeFi" track) built on the
+/// same treasury-payout pattern as reward claims — it stays honestly
+/// unresolved (never fakes a payout) if no treasury wallet is configured.
+model StakePosition {
+  id                String      @id @default(cuid())
+  userId            String
+  networkId         NetworkId
+  sourceWalletId    String // WalletAccount.id principal was drawn from and returned to
+  principalUsdc     String
+  apyBps            Int // e.g. 400 = 4.00% APY, fixed at stake time
+  lockDays          Int
+  status            StakeStatus @default(active)
+  principalTxHash   String?
+  withdrawalTxHash  String?
+  yieldUsdc         String?
+  failureReason     String?
+  startedAt         DateTime    @default(now())
+  maturesAt         DateTime
+  withdrawnAt       DateTime?
+
+  @@index([userId, status])
+  @@map("stake_positions")
+}
